@@ -659,6 +659,21 @@ const toolbarButtons: Button[] = [
       },
     },
   },
+  // {
+  //   id: 'DCE_TTP_WR',
+  //   props: {
+  //     icon: 'tool-capture',
+  //     label: i18n.t('Buttons:Capture'),
+  //     commands: 'showDownloadViewportModal',
+  //     evaluate: [
+  //       'evaluate.action',
+  //       {
+  //         name: 'evaluate.viewport.supported',
+  //         unsupportedViewportTypes: ['video', 'wholeSlide'],
+  //       },
+  //     ],
+  //   },
+  // },
   {
     id: 'SegmentLabelTool',
     uiType: 'ohif.toolBoxButton',

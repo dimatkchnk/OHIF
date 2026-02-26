@@ -175,6 +175,15 @@ class ViewportGridService extends PubSubService {
     return state.activeViewportId;
   }
 
+  public getActiveViewport() {
+    const activeViewportId = this.getActiveViewportId();
+    if (!activeViewportId) {
+      return null;
+    }
+    const state = this.getState();
+    return state.viewports.get(activeViewportId);
+  }
+
   public setViewportGridSizeChanged() {
     const state = this.getState();
     this._broadcastEvent(this.EVENTS.GRID_SIZE_CHANGED, {

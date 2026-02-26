@@ -21,6 +21,7 @@ export const extensionDependencies = {
   // Can derive the versions at least process.env.from npm_package_version
   ...basicDependencies,
   '@ohif/extension-measurement-tracking': '^3.0.0',
+  'colorPixelsByDCE': '^0.0.1'
 };
 
 export const longitudinalInstance = {
@@ -28,7 +29,10 @@ export const longitudinalInstance = {
   id: ohif.layout,
   props: {
     ...basicLayout.props,
-    leftPanels: [tracked.thumbnailList],
+    leftPanels: [
+      tracked.thumbnailList,
+      'colorPixelsByDCE.panelModule.DCE_PANEL'
+    ],
     rightPanels: [cornerstone.segmentation, tracked.measurements],
     viewports: [
       {
@@ -58,6 +62,10 @@ export const modeInstance = {
     // We should not be.
     id,
     routeName: 'viewer',
+    // onModeEnter: ({ servicesManager, extensionManager }) => {
+    //   console.log('bibibi');
+    //   console.log(extensionManager.getModulesByType('toolbarModule').find((ext) => ext.extensionId === 'colorPixelsByDCE').module);
+    // },
     displayName: i18n.t('Modes:Basic Viewer'),
     routes: [
       longitudinalRoute

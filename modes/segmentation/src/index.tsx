@@ -2,8 +2,13 @@ import { id } from './id';
 import toolbarButtons from './toolbarButtons';
 import initToolGroups from './initToolGroups';
 import setUpAutoTabSwitchHandler from './utils/setUpAutoTabSwitchHandler';
-import { ohif, cornerstone, extensionDependencies, dicomRT, segmentation } from '@ohif/mode-basic';
+import { ohif, cornerstone, extensionDependencies as basicDependencies, dicomRT, segmentation } from '@ohif/mode-basic';
 export * from './toolbarButtons';
+
+export const extensionDependencies = {
+  ...basicDependencies,
+  'colorPixelsByDCE': '^0.0.1'
+};
 
 function modeFactory({ modeConfiguration }) {
   const _unsubscriptions = [];
@@ -38,7 +43,9 @@ function modeFactory({ modeConfiguration }) {
       // Init Default and SR ToolGroups
       initToolGroups(extensionManager, toolGroupService, commandsManager);
 
-      toolbarService.register(toolbarButtons);
+      const DCEExtToolbar = extensionManager.getModulesByType('toolbarModule').find((ext) => ext.extensionId === 'colorPixelsByDCE').module
+
+      toolbarService.register([...toolbarButtons, ...DCEExtToolbar]);
 
       toolbarService.updateSection(toolbarService.sections.primary, [
         'WindowLevel',
@@ -49,6 +56,7 @@ function modeFactory({ modeConfiguration }) {
         'Layout',
         'Crosshairs',
         'MoreTools',
+        'DCE_TTP_WR',
       ]);
 
       toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topLeft, [

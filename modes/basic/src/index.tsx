@@ -4,6 +4,7 @@ import { ToolbarService, utils } from '@ohif/core';
 import initToolGroups from './initToolGroups';
 import toolbarButtons from './toolbarButtons';
 import { id } from './id';
+import { initDCEService } from 'colorPixelsByDCE/src/services/DCEService';
 
 const { TOOLBAR_SECTIONS } = ToolbarService;
 const { structuredCloneWithFunctions } = utils;
@@ -82,6 +83,7 @@ export const extensionDependencies = {
   '@ohif/extension-cornerstone-dicom-rt': '^3.0.0',
   '@ohif/extension-dicom-pdf': '^3.0.1',
   '@ohif/extension-dicom-video': '^3.0.1',
+  'colorPixelsByDCE': '^0.0.1'
 };
 
 export const sopClassHandlers = [
@@ -140,8 +142,13 @@ export function onModeEnter({
 
   // Init Default and SR ToolGroups
   initToolGroups(extensionManager, toolGroupService, commandsManager);
-
-  toolbarService.register(this.toolbarButtons);
+  // initDCEService(servicesManager, commandsManager);
+  console.log('GGG');
+  // console.log(extensionManager.getModuleEntry('colorPixelsByDCE.toolbarModule.DCE_TTP_WR'));
+  // console.log(extensionManager.getModulesByType('commandsModule').find((ext) => ext.extensionId === 'colorPixelsByDCE'));
+  console.log(extensionManager.getModulesByType('commandsModule'));
+  const DCEExtToolbar = extensionManager.getModulesByType('toolbarModule').find((ext) => ext.extensionId === 'colorPixelsByDCE').module
+  toolbarService.register([...this.toolbarButtons, ...DCEExtToolbar]);
 
   for (const [key, section] of Object.entries(this.toolbarSections)) {
     toolbarService.updateSection(key, section);
@@ -219,6 +226,9 @@ export const toolbarSections = {
     'Layout',
     'Crosshairs',
     'MoreTools',
+    'DCE_TTP_WR',
+    'BrushROI',
+    // 'colorPixelsByDCE.toolbarModule.DCE_TTP_WR'
   ],
 
   [TOOLBAR_SECTIONS.viewportActionMenu.topLeft]: ['orientationMenu', 'dataOverlayMenu'],
