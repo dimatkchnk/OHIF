@@ -10,16 +10,21 @@ import { BaseVolumeViewport, getEnabledElement } from '@cornerstonejs/core';
 import { segmentation, annotation, drawing } from '@cornerstonejs/tools';
 import { computeTtpWr } from './utils/ttpWrMath';
 import { DicomMetadataStore } from '@ohif/core/src/services/DicomMetadataStore';
-import { getCurrentVolumeViewportSlice } from '@cornerstonejs/core/utilities'
-import { Enums, utilities, cache, getRenderingEngines, getRenderingEngine, imageLoader, volumeLoader } from '@cornerstonejs/core'
+import { getCurrentVolumeViewportSlice } from '@cornerstonejs/core/utilities';
+import {
+  Enums,
+  utilities,
+  cache,
+  getRenderingEngines,
+  getRenderingEngine,
+  imageLoader,
+  volumeLoader,
+} from '@cornerstonejs/core';
 // import { getPixelData } from '@cornerstonejs/tools/annotation/utilities'
 const { transformWorldToIndex } = utilities;
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
-import {
-  triggerSegmentationDataModified
-} from '@cornerstonejs/tools/segmentation/events/triggerSegmentationDataModified';
-
-
+import { triggerSegmentationDataModified } from '@cornerstonejs/tools/segmentation/events/triggerSegmentationDataModified';
+import { servicesManager } from '@ohif/app/src/App';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -39,6 +44,33 @@ export default {
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
     // initDCEService(servicesManager, commandsManager);
+    // NEW: Create service to store DCE parameters
+    const dceParamsService = {
+      startFrame: 8,
+      kernelSize: 4,
+      setStartFrame(value) {
+        this.startFrame = value;
+      },
+      setKernelSize(value) {
+        this.kernelSize = value;
+      },
+      getStartFrame() {
+        return this.startFrame;
+      },
+      getKernelSize() {
+        return this.kernelSize;
+      },
+    };
+
+
+    servicesManager.registerService({
+      name: 'dceParamsService',
+      create: ({ configuration = {} }) => {
+        return dceParamsService;
+      },
+    });
+
+    // servicesManager.registerService('dceParamsService', dceParamsService);
   },
   /**
    * PanelModule should provide a list of panels that will be available in OHIF
@@ -47,14 +79,28 @@ export default {
    * is the StudyBrowserPanel that is provided by the default extension in OHIF.
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }) => {
+    // const wrappedPanel = () => {
+    //   return <DCEPlotPanel />;
+    // };
+
     return [
       {
         name: 'DCE_PANEL',
-        iconName: 'list-bullets',
+        iconName: 'tool-measure-ellipse',
+        iconLabel: 'DCE Panel',
         label: 'DCE Panel',
+        // isDisabled: studies => {}, // optional
         component: DCEPlotPanel,
       },
     ];
+    // return [
+    //   {
+    //     name: 'DCE_PANEL',
+    //     iconName: 'info-action',
+    //     label: 'DCE Panel',
+    //     component: DCEPlotPanel,
+    //   },
+    // ];
   },
   /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
@@ -88,7 +134,7 @@ export default {
           icon: 'tool-capture',
           label: 'Calculate TTP and WR',
           commands: {
-            commandName: 'computeTtpWr'
+            commandName: 'computeTtpWr',
           },
           // evaluate: [
           //   'evaluate.action',
@@ -117,19 +163,19 @@ export default {
       //       }
       //
       //     },
-          // evaluate: [
-          //   'evaluate.action',
-          //   {
-          //     name: 'evaluate.viewport.supported',
-          //     unsupportedViewportTypes: ['video', 'wholeSlide'],
-          //   },
-          // ],
-        // },
-        // clickHandler: () => {
-        //   commandsManager.runCommand('setToolActive', {
-        //     toolName: ToolNames.SRCircleROI,
-        //   });
-        // },
+      // evaluate: [
+      //   'evaluate.action',
+      //   {
+      //     name: 'evaluate.viewport.supported',
+      //     unsupportedViewportTypes: ['video', 'wholeSlide'],
+      //   },
+      // ],
+      // },
+      // clickHandler: () => {
+      //   commandsManager.runCommand('setToolActive', {
+      //     toolName: ToolNames.SRCircleROI,
+      //   });
+      // },
       // },
       // {
       //   name: 'BrushROI',
@@ -144,7 +190,7 @@ export default {
       //     });
       //   },
       // }
-    ]
+    ];
   },
   /**
    * LayoutTemplateMOdule should provide a list of layout templates that will be
@@ -186,11 +232,12 @@ export default {
 
     const actions = {
       computeTtpWr: () => {
+        const renderingEngine = getRenderingEngine('OHIFCornerstoneRenderingEngine');
 
 
-        const renderingEngine = getRenderingEngine("OHIFCornerstoneRenderingEngine");
-
-        const viewport = renderingEngine.getStackViewport(viewportGridService.getActiveViewportId());
+        const viewport = renderingEngine.getStackViewport(
+          viewportGridService.getActiveViewportId()
+        );
 
         if (!viewport) {
           console.warn('No active viewport found');
@@ -201,16 +248,30 @@ export default {
         const currImgId = viewport.getCurrentImageId(currentImageIdx);
 
         if (segmentation.state.getSegmentations().length) {
-          console.log(segmentation.getLabelmapImageIdsForImageId(currImgId, segmentation.state.getSegmentations()[0]?.segmentationId));
-          console.log(cache.getImage(segmentation.getLabelmapImageIdsForImageId(currImgId, segmentation.state.getSegmentations()[0]?.segmentationId)[0])?.getPixelData())
+          console.log(
+            segmentation.getLabelmapImageIdsForImageId(
+              currImgId,
+              segmentation.state.getSegmentations()[0]?.segmentationId
+            )
+          );
+          console.log(
+            cache
+              .getImage(
+                segmentation.getLabelmapImageIdsForImageId(
+                  currImgId,
+                  segmentation.state.getSegmentations()[0]?.segmentationId
+                )[0]
+              )
+              ?.getPixelData()
+          );
         }
 
         // const enabledElement = getEnabledElement(viewport.element);
         // const imageIds = viewport.getImageIds();
 
-        console.log('ALAL');
+        // console.log('ALAL');
         // console.log(segmentation.colo);
-        console.log(segmentation.state.getSegmentations());
+        // console.log(segmentation.state.getSegmentations());
 
         // console.log(segmentationService.getLabelmapVolume(segmentation.state.getSegmentations()[0].segmentationId));
         // console.log(cache.getVolume(segmentation.state.getSegmentations()[0].segmentationId));
@@ -222,72 +283,72 @@ export default {
 
         // console.log(segmentationService.getLabelmapVolume(segmentationObj.segmentationId));
 
-        if (!annotationObj) {
-          console.warn('Draw ROI first');
-          return;
-        }
+        // if (!annotationObj) {
+        //   console.warn('Draw ROI first');
+        //   return;
+        // }
 
-        if (!annotationObj.data.contour.closed) {
-          console.warn('Only closed ROIs are supported');
-          return;
-        }
+        // if (!annotationObj.data.contour.closed) {
+        //   console.warn('Only closed ROIs are supported');
+        //   return;
+        // }
 
-        console.log(annotationObj);
+        // console.log(annotationObj);
 
         // Get current image dimensions
-        const currentImage = cache.getImage(currImgId);
-        const rows = currentImage.rows;
-        const cols = currentImage.columns;
+        // const currentImage = cache.getImage(currImgId);
+        // const rows = currentImage.rows;
+        // const cols = currentImage.columns;
 
         // Get canvas dimensions from viewport element
-        const canvasRect = viewport.element.getBoundingClientRect();
-        const canvasWidth = canvasRect.width;
-        const canvasHeight = canvasRect.height;
-
-        // Convert canvas coordinates → image pixel coordinates
-        const pixelPoints = annotationObj.data.contour.polyline.map(worldPt => {
-          // World → Canvas coordinates
-          const canvasPt = viewport.worldToCanvas(worldPt);
-
-          // Canvas → Image pixel coordinates (accounting for viewport scaling/offset)
-          const imgX = Math.round((canvasPt[0] / canvasWidth) * cols);
-          const imgY = Math.round((canvasPt[1] / canvasHeight) * rows);
-
-          // Clamp to image boundaries
-          return [
-            Math.max(0, Math.min(cols - 1, imgX)), // i (column)
-            Math.max(0, Math.min(rows - 1, imgY))  // j (row)
-          ];
-        });
-
-        // Ensure polygon is closed
-        if (pixelPoints.length > 2) {
-          const [firstI, firstJ] = pixelPoints[0];
-          const [lastI, lastJ] = pixelPoints[pixelPoints.length - 1];
-          if (firstI !== lastI || firstJ !== lastJ) {
-            pixelPoints.push([firstI, firstJ]);
-          }
-        } else {
-          console.warn('ROI has < 3 valid points');
-          return;
-        }
-
-        console.log('Converted pixel points (first 5):', pixelPoints.slice(0, 5));
-        console.log('Image dimensions:', { rows, cols });
-
-        console.log('Point validation:');
-        pixelPoints.forEach(([i, j], idx) => {
-          if (i < 0 || i >= cols || j < 0 || j >= rows) {
-            console.error(`Point ${idx} out of bounds:`, {i, j, cols, rows});
-          }
-        });
-
-        const pointsCanvas = [];
-        for (const points of annotationObj.data.contour.polyline) {
-          pointsCanvas.push(viewport.worldToCanvas(points));
-        }
-        console.log(pointsCanvas);
-        annotationObj['pointsCanvas'] = pointsCanvas;
+        // const canvasRect = viewport.element.getBoundingClientRect();
+        // const canvasWidth = canvasRect.width;
+        // const canvasHeight = canvasRect.height;
+        //
+        // // Convert canvas coordinates → image pixel coordinates
+        // const pixelPoints = annotationObj.data.contour.polyline.map(worldPt => {
+        //   // World → Canvas coordinates
+        //   const canvasPt = viewport.worldToCanvas(worldPt);
+        //
+        //   // Canvas → Image pixel coordinates (accounting for viewport scaling/offset)
+        //   const imgX = Math.round((canvasPt[0] / canvasWidth) * cols);
+        //   const imgY = Math.round((canvasPt[1] / canvasHeight) * rows);
+        //
+        //   // Clamp to image boundaries
+        //   return [
+        //     Math.max(0, Math.min(cols - 1, imgX)), // i (column)
+        //     Math.max(0, Math.min(rows - 1, imgY)), // j (row)
+        //   ];
+        // });
+        //
+        // // Ensure polygon is closed
+        // if (pixelPoints.length > 2) {
+        //   const [firstI, firstJ] = pixelPoints[0];
+        //   const [lastI, lastJ] = pixelPoints[pixelPoints.length - 1];
+        //   if (firstI !== lastI || firstJ !== lastJ) {
+        //     pixelPoints.push([firstI, firstJ]);
+        //   }
+        // } else {
+        //   console.warn('ROI has < 3 valid points');
+        //   return;
+        // }
+        //
+        // console.log('Converted pixel points (first 5):', pixelPoints.slice(0, 5));
+        // console.log('Image dimensions:', { rows, cols });
+        //
+        // console.log('Point validation:');
+        // pixelPoints.forEach(([i, j], idx) => {
+        //   if (i < 0 || i >= cols || j < 0 || j >= rows) {
+        //     console.error(`Point ${idx} out of bounds:`, { i, j, cols, rows });
+        //   }
+        // });
+        //
+        // const pointsCanvas = [];
+        // for (const points of annotationObj.data.contour.polyline) {
+        //   pointsCanvas.push(viewport.worldToCanvas(points));
+        // }
+        // console.log(pointsCanvas);
+        // annotationObj['pointsCanvas'] = pointsCanvas;
         // const segmentationId = segmentationObj.segmentationId;
 
         // const imageIds = segmentationObj.representationData.Labelmap.imageIds;
@@ -296,9 +357,11 @@ export default {
         // console.log(currImgId);
 
         const currentInstance = DicomMetadataStore.getInstanceByImageId(currImgId);
-        const currentDisplaySet = displaySetService.getDisplaySetForSOPInstanceUID(currentInstance.SOPInstanceUID);
+        const currentSliceLocation = currentInstance.SliceLocation;
+        const currentDisplaySet = displaySetService.getDisplaySetForSOPInstanceUID(
+          currentInstance.SOPInstanceUID
+        );
         const currentStudy = DicomMetadataStore.getStudy(currentInstance.StudyInstanceUID);
-        // console.log(currentStudy);
 
         // Get all display sets in the active study
         const displaySets = displaySetService.getActiveDisplaySets();
@@ -316,24 +379,16 @@ export default {
               console.warn('Display set has no images');
               return;
             }
-            // console.log(displaySet.images);
-            // console.log(displaySet.imageIds);
-
-            // if (!imageIds || currentImageIdx >= imageIds.length) {
-            //   return null; // index out of bounds for this series
-            // }
-
-            // console.log(cache.getImageByReferencedImageId(displaySet.imageIds[0]));
-            // console.log(cache.getImage(displaySet.imageIds[0]));
             let foundImgId = null;
             for (const instanceImg of displaySet.images) {
               // Skip derived or problematic images if needed
-              const loadImagePromise = imageLoader.loadImage(instanceImg.imageId)
+              const loadImagePromise = imageLoader
+                .loadImage(instanceImg.imageId)
                 .then(img => {
                   const instance = DicomMetadataStore.getInstanceByImageId(
                     img.referencedImageId ?? img.imageId
                   );
-                  if (instance.InstanceNumber == currentImageIdx + 1) {
+                  if (instance.SliceLocation == currentSliceLocation) {
                     foundImgId = img.imageId;
                     imageIds.push(img.imageId);
                     images.push(img);
@@ -357,14 +412,12 @@ export default {
           })
           .filter(Boolean);
 
+        const dceParamsService = servicesManager.services.dceParamsService;
         Promise.all(imagePromises).then(async () => {
-
-
           const { labelmap, rows, cols } = computeTtpWr({
             images,
-            pixelPoints,
-            startFrame: 8,
-            kernelSize: 4
+            startFrame: dceParamsService.getStartFrame(),
+            kernelSize: dceParamsService.getKernelSize(),
           });
 
           // VALIDATE: Critical safety check before proceeding
@@ -378,16 +431,15 @@ export default {
 
           segmentation.removeAllSegmentations();
 
-          const segmentationId = "dce_" + Date.now();
+          const segmentationId = 'dce_' + Date.now();
           // CREATE derived labelmap image for CURRENT SLICE only
           const segImage = await imageLoader.createAndCacheDerivedLabelmapImage(currImgId);
 
           // SET ENTIRE SCALAR DATA (NOT arbitrary indices)
           if (segImage.voxelManager?.setScalarData) {
             // Convert to Uint8Array if needed (labelmap should already be Uint8Array)
-            const typedLabelmap = labelmap instanceof Uint8Array
-              ? labelmap
-              : new Uint8Array(labelmap);
+            const typedLabelmap =
+              labelmap instanceof Uint8Array ? labelmap : new Uint8Array(labelmap);
 
             segImage.voxelManager.setScalarData(typedLabelmap);
             console.log(`✓ Set labelmap data: ${typedLabelmap.length} voxels (${rows}x${cols})`);
@@ -396,8 +448,13 @@ export default {
             return;
           }
 
-          const testIdx = 150 * cols + 200; // row 150, col 200
-          console.log('Label at test pixel:', labelmap[testIdx], 'Voxel value:', segImage.voxelManager.getAtIndex(testIdx));
+          // const testIdx = 150 * cols + 200; // row 150, col 200
+          // console.log(
+          //   'Label at test pixel:',
+          //   labelmap[testIdx],
+          //   'Voxel value:',
+          //   segImage.voxelManager.getAtIndex(testIdx)
+          // );
 
           // const segImage = await imageLoader.createAndCacheDerivedLabelmapImage(currImgId)
           segmentation.addSegmentations([
@@ -418,8 +475,8 @@ export default {
             color: [255, 0, 0, 1], // (RGBA) blue
             visibility: true,
             isLocked: true,
-            active: true
-          })
+            active: true,
+          });
 
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 2,
@@ -427,8 +484,8 @@ export default {
             color: [255, 255, 0, 1], // yellow
             visibility: true,
             isLocked: true,
-            active: true
-          })
+            active: true,
+          });
 
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 3,
@@ -436,67 +493,26 @@ export default {
             color: [255, 0, 0, 1], // red
             visibility: true,
             isLocked: true,
-            active: true
-          })
+            active: true,
+          });
 
-          segmentation.triggerSegmentationEvents.triggerSegmentationDataModified(
-            segmentationId
-          );
+          // segmentationService.addSegment(segmentationId, {
+          //   segmentIndex: 4,
+          //   label: 'undefined',
+          //   color: [69, 201, 54, 1],
+          //   visibility: true,
+          //   isLocked: true,
+          //   active: false,
+          // });
+
+          segmentation.triggerSegmentationEvents.triggerSegmentationDataModified(segmentationId);
 
           await segmentation.addLabelmapRepresentationToViewport(viewport.id, [
             {
               segmentationId: segmentationId,
             },
           ]);
-          //
-          // const randomColor = `rgb(${ Math.floor(Math.random() * 256)}, ${ Math.floor(Math.random() * 256)}, ${ Math.floor(Math.random() * 256)})`;
-          // const customAnnotation = {
-          //   annotationUID: utilities.uuidv4(),
-          //   metadata: {
-          //     referencedImageId: currImgId,
-          //     toolName: 'RectangleROI'
-          //   },
-          //   data: {
-          //     handles: {
-          //       points: [
-          //         [
-          //           -105.0056490932803,
-          //           -125.35308618886336,
-          //           -55.47381155402201
-          //         ],
-          //         [
-          //           -43.10424043703447,
-          //           -125.35308618886336,
-          //           -51.08216300987493
-          //         ],
-          //         [
-          //           -105.00564909328033,
-          //           -80.32057454247992,
-          //           -55.47381155402201
-          //         ],
-          //         [
-          //           -43.104240437034456,
-          //           -80.32057454247992,
-          //           -51.08216300987493
-          //         ]
-          //       ]
-          //     }
-          //   }
-          // }
-          // annotation.config.style.setAnnotationStyles(customAnnotation.annotationUID, {
-          //   color: randomColor,
-          //   Enabled: true,
-          //   fillColor: randomColor,
-          //   fillOpacity: randomColor,
-          //   Locked: true,
-          //   locked: true
-          // })
-          // annotation.state.addAnnotation(customAnnotation, viewport.element)
-
-
-
         });
-
       },
     };
 
@@ -513,7 +529,6 @@ export default {
       definitions,
       defaultContext: 'DEFAULT',
     };
-
   },
   /**
    * ContextModule should provide a list of context that will be available in OHIF
