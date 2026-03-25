@@ -247,24 +247,24 @@ export default {
         const currentImageIdx = viewport.getCurrentImageIdIndex();
         const currImgId = viewport.getCurrentImageId(currentImageIdx);
 
-        if (segmentation.state.getSegmentations().length) {
-          console.log(
-            segmentation.getLabelmapImageIdsForImageId(
-              currImgId,
-              segmentation.state.getSegmentations()[0]?.segmentationId
-            )
-          );
-          console.log(
-            cache
-              .getImage(
-                segmentation.getLabelmapImageIdsForImageId(
-                  currImgId,
-                  segmentation.state.getSegmentations()[0]?.segmentationId
-                )[0]
-              )
-              ?.getPixelData()
-          );
-        }
+        // if (segmentation.state.getSegmentations().length) {
+        //   console.log(
+        //     segmentation.getLabelmapImageIdsForImageId(
+        //       currImgId,
+        //       segmentation.state.getSegmentations()[0]?.segmentationId
+        //     )
+        //   );
+        //   console.log(
+        //     cache
+        //       .getImage(
+        //         segmentation.getLabelmapImageIdsForImageId(
+        //           currImgId,
+        //           segmentation.state.getSegmentations()[0]?.segmentationId
+        //         )[0]
+        //       )
+        //       ?.getPixelData()
+        //   );
+        // }
 
         // const enabledElement = getEnabledElement(viewport.element);
         // const imageIds = viewport.getImageIds();
