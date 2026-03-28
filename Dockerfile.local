@@ -1,0 +1,126 @@
+# syntax=docker/dockerfile:1.7-labs
+# OHIF Viewer Dockerfile - Supports both DEV and PROD modes
+#
+# USAGE:
+#   Development: docker build --target dev -t ohif/viewer:dev .
+#   Production:  docker build -t ohif/viewer:prod .
+#
+# Run dev container:
+#   docker run -p 3000:3000 -v $(pwd):/usr/src/app -v /usr/src/app/node_modules ohif/viewer:dev
+# Run prod container:
+#   docker run -p 80:80 ohif/viewer:prod
+
+# ============== DEVELOPMENT STAGE ==============
+FROM node:20.18.1-slim as dev
+
+# Install system dependencies needed for native modules
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Install Yarn globally (to match your local setup)
+# RUN npm install -g yarn@1.22.22
+
+# Copy package files first for better layer caching
+COPY package.json yarn.lock preinstall.js lerna.json ./
+COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
+
+# Install dependencies using YARN (not Bun)
+RUN yarn install --frozen-lockfile
+
+# Add ajv if needed (uncomment if required for your extension)
+# RUN yarn add ajv@8.12.0 --ignore-engines
+
+# Copy the rest of the application
+COPY --link --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+
+# Expose webpack dev server port
+EXPOSE 3000
+
+# Set development environment variables
+ENV NODE_ENV=development
+ENV QUICK_BUILD=true
+ENV GENERATE_SOURCEMAP=true
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+# Optional: Pass config via build arg
+ARG APP_CONFIG=config/default.js
+ARG PUBLIC_URL=/
+ENV PUBLIC_URL=${PUBLIC_URL}
+
+# Run the development server (like `yarn dev` locally)
+#CMD ["yarn", "dev", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["yarn", "dev"]
+
+
+# ============== PRODUCTION BUILDER STAGE ==============
+FROM node:20.18.1-slim as builder
+
+RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Use Yarn for consistency with local dev
+RUN npm install -g yarn@1.22.22
+
+ENV PATH=/usr/src/app/node_modules/.bin:$PATH
+
+# Copy dependency files
+COPY package.json yarn.lock preinstall.js lerna.json ./
+COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
+
+# Install and build
+RUN yarn install --frozen-lockfile
+# If ajv@8.12.0 is strictly required, add it here with error handling:
+# RUN yarn add ajv@8.12.0 --ignore-engines || echo "Warning: ajv installation failed"
+
+# Copy source code
+COPY --link --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+
+# Build arguments
+ARG APP_CONFIG=config/default.js
+ARG PUBLIC_URL=/
+ENV PUBLIC_URL=${PUBLIC_URL}
+ENV QUICK_BUILD=true
+
+# Run pre-build config check
+RUN yarn run show:config
+
+# Production build
+RUN yarn run build
+
+# Precompress static assets
+RUN chmod u+x .docker/compressDist.sh && ./.docker/compressDist.sh
+
+
+# ============== PRODUCTION FINAL STAGE ==============
+FROM nginxinc/nginx-unprivileged:1.27-alpine as final
+
+ARG PUBLIC_URL=/
+ENV PUBLIC_URL=${PUBLIC_URL}
+ARG PORT=80
+ENV PORT=${PORT}
+
+RUN rm /etc/nginx/conf.d/default.conf
+
+USER nginx
+COPY --chown=nginx:nginx .docker/Viewer-v3.x /usr/src
+RUN chmod 777 /usr/src/entrypoint.sh
+
+# Copy built assets from builder stage
+COPY --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC_URL}
+COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
+
+# Fix permissions for config injection at runtime
+USER root
+RUN chown -R nginx:nginx /usr/share/nginx/html && chmod -R 777 /usr/share/nginx/html
+USER nginx
+
+ENTRYPOINT ["/usr/src/entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
