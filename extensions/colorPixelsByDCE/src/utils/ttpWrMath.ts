@@ -112,7 +112,7 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1 }) {
       return 2; // Yellow - B
     else if (TTP <= 120 && WR < 30)
       return 3; // Red - C
-    else return 0;
+    else return 4;
   }
 
   // --- Sliding Kernel Processing ---

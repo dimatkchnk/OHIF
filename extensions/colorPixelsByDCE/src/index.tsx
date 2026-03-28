@@ -469,10 +469,18 @@ export default {
             },
           ]);
 
+          segmentation.triggerSegmentationEvents.triggerSegmentationDataModified(segmentationId);
+
+          await segmentation.addLabelmapRepresentationToViewport(viewport.id, [
+            {
+              segmentationId: segmentationId,
+            },
+          ]);
+
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 1,
             label: 'A',
-            color: [255, 0, 0, 1], // (RGBA) blue
+            color: [76, 191, 0, 255], // green
             visibility: true,
             isLocked: true,
             active: true,
@@ -481,7 +489,7 @@ export default {
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 2,
             label: 'B',
-            color: [255, 255, 0, 1], // yellow
+            color: [250, 182, 25, 255], // orange
             visibility: true,
             isLocked: true,
             active: true,
@@ -490,28 +498,20 @@ export default {
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 3,
             label: 'C',
-            color: [255, 0, 0, 1], // red
+            color: [194, 29, 0, 255], // red
             visibility: true,
             isLocked: true,
             active: true,
           });
 
-          // segmentationService.addSegment(segmentationId, {
-          //   segmentIndex: 4,
-          //   label: 'undefined',
-          //   color: [69, 201, 54, 1],
-          //   visibility: true,
-          //   isLocked: true,
-          //   active: false,
-          // });
-
-          segmentation.triggerSegmentationEvents.triggerSegmentationDataModified(segmentationId);
-
-          await segmentation.addLabelmapRepresentationToViewport(viewport.id, [
-            {
-              segmentationId: segmentationId,
-            },
-          ]);
+          segmentationService.addSegment(segmentationId, {
+            segmentIndex: 4,
+            label: 'undefined',
+            color: [203, 230, 5, 255], // light green
+            visibility: true,
+            isLocked: true,
+            active: false,
+          });
         });
       },
     };
