@@ -27,7 +27,20 @@ function saveGrayscaleUint8(data, width, height) {
   link.click();
 }
 
-export function computeTtpWr({ images, startFrame = 8, kernelSize = 1 }) {
+// Ray-casting point-in-polygon test
+function isInsidePolygon(x: number, y: number, polygon: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothingMethod = 'slidingKernel', roiPolygons = null }) {
   const rows = images[0].rows;
   const cols = images[0].columns;
   // Sort images by AcquisitionDateTime
@@ -115,47 +128,56 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1 }) {
     else return 4;
   }
 
-  // --- Sliding Kernel Processing ---
-  const visited = new Uint8Array(rows * cols); // Track which pixels are already assigned
-  const step = 1;
+  // Pre-compute ROI mask as union of all polygons
+  let roiMask: Uint8Array | null = null;
+  if (roiPolygons && roiPolygons.length > 0) {
+    roiMask = new Uint8Array(rows * cols);
+    for (let py = 0; py < rows; py++) {
+      for (let px = 0; px < cols; px++) {
+        for (const polygon of roiPolygons) {
+          if (isInsidePolygon(px, py, polygon)) {
+            roiMask[py * cols + px] = 1;
+            break;
+          }
+        }
+      }
+    }
+  }
 
-  for (let y = 0; y < rows - kernelSize + 1; y += step) {
-    for (let x = 0; x < cols - kernelSize + 1; x += step) {
-      // Collect intensities across time for all pixels in current kernel
-      const kernelIntensitiesOverTime = [];
+  if (smoothingMethod === 'mean') {
+    // --- Mean: compute mean curve per ROI polygon, classify and color each separately ---
+    const polygons = roiPolygons ?? [];
 
+    for (const polygon of polygons) {
+      // Collect pixel indices for this polygon
+      const polyIndices: number[] = [];
+      for (let py = 0; py < rows; py++) {
+        for (let px = 0; px < cols; px++) {
+          if (isInsidePolygon(px, py, polygon)) {
+            polyIndices.push(py * cols + px);
+          }
+        }
+      }
+      if (polyIndices.length === 0) continue;
+
+      // Mean intensity over time for this polygon
+      const meanIntensitiesOverTime: number[] = [];
       for (let t = 0; t < frames.length; t++) {
         const frame = frames[t];
         let sum = 0;
-        let count = 0;
-
-        for (let dy = 0; dy < kernelSize; dy++) {
-          for (let dx = 0; dx < kernelSize; dx++) {
-            const py = y + dy;
-            const px = x + dx;
-            const idx1D = py * cols + px;
-            sum += frame[idx1D];
-            count++;
-          }
+        for (const idx of polyIndices) {
+          sum += frame[idx];
         }
-
-        const meanIntensity = sum / count;
-        kernelIntensitiesOverTime.push(meanIntensity);
+        meanIntensitiesOverTime.push(sum / polyIndices.length);
       }
 
-      // Skip flat curves
-      const min = Math.min(...kernelIntensitiesOverTime);
-      const max = Math.max(...kernelIntensitiesOverTime);
-      if (min === max || max - min < 20) continue;
+      allCurves.push(meanIntensitiesOverTime);
 
-      allCurves.push(kernelIntensitiesOverTime);
-
-      // Compute TTP and WR
-      const preVal = mean(kernelIntensitiesOverTime.slice(1, startFrame));
-      const cutIntensities = kernelIntensitiesOverTime.slice(startFrame);
+      const preVal = mean(meanIntensitiesOverTime.slice(1, startFrame));
+      const cutIntensities = meanIntensitiesOverTime.slice(startFrame);
       const peakIdx = argMax(cutIntensities);
       const peakVal = cutIntensities[peakIdx];
-      const endVal = kernelIntensitiesOverTime[kernelIntensitiesOverTime.length - 1];
+      const endVal = meanIntensitiesOverTime[meanIntensitiesOverTime.length - 1];
 
       const TTP = timeSeconds[startFrame + peakIdx] - timeSeconds[startFrame];
       let WR = 0;
@@ -163,24 +185,72 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1 }) {
         WR = ((peakVal - endVal) / (peakVal - preVal)) * 100;
       }
 
-      // Classify whole kernel
       const segmentLabel = classify(TTP, WR);
 
-      // Assign label to all pixels in the kernel
-      for (let dy = 0; dy < kernelSize; dy++) {
-        for (let dx = 0; dx < kernelSize; dx++) {
-          const py = y + dy;
-          const px = x + dx;
-          const idx1D = py * cols + px;
-          labelmap[idx1D] = segmentLabel;
-          visited[idx1D] = 1;
+      for (const idx of polyIndices) {
+        labelmap[idx] = segmentLabel;
+      }
+    }
+  } else {
+    // --- Sliding Kernel Processing ---
+    const step = 1;
+
+    for (let y = 0; y < rows - kernelSize + 1; y += step) {
+      for (let x = 0; x < cols - kernelSize + 1; x += step) {
+        if (roiMask && !roiMask[y * cols + x]) continue;
+
+        const kernelIntensitiesOverTime: number[] = [];
+
+        for (let t = 0; t < frames.length; t++) {
+          const frame = frames[t];
+          let sum = 0;
+          let count = 0;
+
+          for (let dy = 0; dy < kernelSize; dy++) {
+            for (let dx = 0; dx < kernelSize; dx++) {
+              const py = y + dy;
+              const px = x + dx;
+              sum += frame[py * cols + px];
+              count++;
+            }
+          }
+
+          kernelIntensitiesOverTime.push(sum / count);
+        }
+
+        const min = Math.min(...kernelIntensitiesOverTime);
+        const max = Math.max(...kernelIntensitiesOverTime);
+        if (min === max || max - min < 20) continue;
+
+        allCurves.push(kernelIntensitiesOverTime);
+
+        const preVal = mean(kernelIntensitiesOverTime.slice(1, startFrame));
+        const cutIntensities = kernelIntensitiesOverTime.slice(startFrame);
+        const peakIdx = argMax(cutIntensities);
+        const peakVal = cutIntensities[peakIdx];
+        const endVal = kernelIntensitiesOverTime[kernelIntensitiesOverTime.length - 1];
+
+        const TTP = timeSeconds[startFrame + peakIdx] - timeSeconds[startFrame];
+        let WR = 0;
+        if (peakVal > preVal && peakVal !== preVal) {
+          WR = ((peakVal - endVal) / (peakVal - preVal)) * 100;
+        }
+
+        const segmentLabel = classify(TTP, WR);
+
+        for (let dy = 0; dy < kernelSize; dy++) {
+          for (let dx = 0; dx < kernelSize; dx++) {
+            const py = y + dy;
+            const px = x + dx;
+            const idx1D = py * cols + px;
+            if (!roiMask || roiMask[idx1D]) {
+              labelmap[idx1D] = segmentLabel;
+            }
+          }
         }
       }
     }
   }
-
-  // Optional: Fill unvisited pixels using nearest neighbor or default class
-  // For now, leave them as background (label 0)
 
   // --- Compute Mean Curve Across All Kernels ---
   let meanCurve = [];

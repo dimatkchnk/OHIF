@@ -8,6 +8,9 @@ export default function DCEPlotPanel() {
   // Initialize state from service
   const [startFrame, setStartFrame] = useState(dceParamsService.getStartFrame());
   const [kernelSize, setKernelSize] = useState(dceParamsService.getKernelSize());
+  const [smoothingMethod, setSmoothingMethod] = useState<'slidingKernel' | 'mean'>(
+    dceParamsService.getSmoothingMethod()
+  );
 
   // Sync service when inputs change
   const handleStartFrameChange = (e) => {
@@ -24,6 +27,11 @@ export default function DCEPlotPanel() {
       dceParamsService.setKernelSize(value);
       setKernelSize(value);
     }
+  };
+
+  const handleSmoothingMethodChange = (val) => {
+    dceParamsService.setSmoothingMethod(val);
+    setSmoothingMethod(val);
   };
 
   // ... existing data logic ...
@@ -52,6 +60,24 @@ export default function DCEPlotPanel() {
             />
           </label>
         </div>
+        <div style={{ display: 'flex', gap: '16px', color: 'white' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={smoothingMethod === 'slidingKernel'}
+              onChange={() => handleSmoothingMethodChange('slidingKernel')}
+            />
+            Sliding Kernel
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={smoothingMethod === 'mean'}
+              onChange={() => handleSmoothingMethodChange('mean')}
+            />
+            Mean
+          </label>
+        </div>
         <div>
           <label style={{ display: 'block', marginBottom: '4px', color: 'white' }}>
             Kernel Size:
@@ -60,13 +86,15 @@ export default function DCEPlotPanel() {
               value={kernelSize}
               onChange={handleKernelSizeChange}
               min="1"
+              disabled={smoothingMethod === 'mean'}
               style={{
                 marginLeft: '8px',
                 padding: '4px',
                 width: '60px',
                 border: '1px solid #ccc',
                 borderRadius: '4px',
-                color: 'black'
+                color: 'black',
+                opacity: smoothingMethod === 'mean' ? 0.5 : 1,
               }}
             />
           </label>

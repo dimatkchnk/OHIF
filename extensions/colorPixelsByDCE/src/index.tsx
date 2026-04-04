@@ -1,3 +1,4 @@
+import React from 'react';
 import { id } from './id';
 import ToolNames from '@ohif/extension-cornerstone-dicom-sr/src/tools/toolNames';
 import { initDCEService } from './services/DCEService';
@@ -48,17 +49,24 @@ export default {
     const dceParamsService = {
       startFrame: 8,
       kernelSize: 4,
+      smoothingMethod: 'slidingKernel',
       setStartFrame(value) {
         this.startFrame = value;
       },
       setKernelSize(value) {
         this.kernelSize = value;
       },
+      setSmoothingMethod(value: 'slidingKernel' | 'mean') {
+        this.smoothingMethod = value;
+      },
       getStartFrame() {
         return this.startFrame;
       },
       getKernelSize() {
         return this.kernelSize;
+      },
+      getSmoothingMethod() {
+        return this.smoothingMethod;
       },
     };
 
@@ -225,7 +233,8 @@ export default {
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
     const services = servicesManager.services;
-    const { displaySetService, viewportGridService, segmentationService } = services;
+    const { displaySetService, viewportGridService, segmentationService, uiDialogService } =
+      services;
 
     let curve = [];
     let overlay = null;
@@ -246,25 +255,8 @@ export default {
 
         const currentImageIdx = viewport.getCurrentImageIdIndex();
         const currImgId = viewport.getCurrentImageId(currentImageIdx);
-
-        // if (segmentation.state.getSegmentations().length) {
-        //   console.log(
-        //     segmentation.getLabelmapImageIdsForImageId(
-        //       currImgId,
-        //       segmentation.state.getSegmentations()[0]?.segmentationId
-        //     )
-        //   );
-        //   console.log(
-        //     cache
-        //       .getImage(
-        //         segmentation.getLabelmapImageIdsForImageId(
-        //           currImgId,
-        //           segmentation.state.getSegmentations()[0]?.segmentationId
-        //         )[0]
-        //       )
-        //       ?.getPixelData()
-        //   );
-        // }
+        console.log("ImageIdIndex: ", viewport.getCurrentImageIdIndex());
+        console.log("Slice Index: ", viewport.getSliceIndex());
 
         // const enabledElement = getEnabledElement(viewport.element);
         // const imageIds = viewport.getImageIds();
@@ -277,87 +269,42 @@ export default {
         // console.log(cache.getVolume(segmentation.state.getSegmentations()[0].segmentationId));
         // const segmentationObj = segmentation.state.getSegmentations()[0];
         const segmentationObj = null;
-        const selectedAnnotationId = annotation.selection.getAnnotationsSelected()[0];
-        const annotationObj = annotation.state.getAnnotation(selectedAnnotationId);
-        console.log(annotation.state.getAllAnnotations());
+        const allAnnotations = annotation.state.getAllAnnotations();
+        const annotationObjs = allAnnotations.filter(
+          a => a.data?.contour?.polyline && a.data.contour.closed
+        );
 
-        // console.log(segmentationService.getLabelmapVolume(segmentationObj.segmentationId));
+        if (annotationObjs.length === 0) {
+          uiDialogService.show({
+            id: 'draw-roi-warning',
+            title: 'Warning',
+            shouldCloseOnEsc: true,
+            shouldCloseOnOverlayClick: true,
+            content: ({ hide }) => (
+              <div className="p-4 text-white">
+                <p>Please draw an ROI first before running DCE analysis.</p>
+                <button
+                  className="mt-4 rounded bg-primary-main px-4 py-2 text-white"
+                  onClick={hide}
+                >
+                  OK
+                </button>
+              </div>
+            ),
+          });
+          return;
+        }
 
-        // if (!annotationObj) {
-        //   console.warn('Draw ROI first');
-        //   return;
-        // }
-
-        // if (!annotationObj.data.contour.closed) {
-        //   console.warn('Only closed ROIs are supported');
-        //   return;
-        // }
-
-        // console.log(annotationObj);
-
-        // Get current image dimensions
-        // const currentImage = cache.getImage(currImgId);
-        // const rows = currentImage.rows;
-        // const cols = currentImage.columns;
-
-        // Get canvas dimensions from viewport element
-        // const canvasRect = viewport.element.getBoundingClientRect();
-        // const canvasWidth = canvasRect.width;
-        // const canvasHeight = canvasRect.height;
-        //
-        // // Convert canvas coordinates → image pixel coordinates
-        // const pixelPoints = annotationObj.data.contour.polyline.map(worldPt => {
-        //   // World → Canvas coordinates
-        //   const canvasPt = viewport.worldToCanvas(worldPt);
-        //
-        //   // Canvas → Image pixel coordinates (accounting for viewport scaling/offset)
-        //   const imgX = Math.round((canvasPt[0] / canvasWidth) * cols);
-        //   const imgY = Math.round((canvasPt[1] / canvasHeight) * rows);
-        //
-        //   // Clamp to image boundaries
-        //   return [
-        //     Math.max(0, Math.min(cols - 1, imgX)), // i (column)
-        //     Math.max(0, Math.min(rows - 1, imgY)), // j (row)
-        //   ];
-        // });
-        //
-        // // Ensure polygon is closed
-        // if (pixelPoints.length > 2) {
-        //   const [firstI, firstJ] = pixelPoints[0];
-        //   const [lastI, lastJ] = pixelPoints[pixelPoints.length - 1];
-        //   if (firstI !== lastI || firstJ !== lastJ) {
-        //     pixelPoints.push([firstI, firstJ]);
-        //   }
-        // } else {
-        //   console.warn('ROI has < 3 valid points');
-        //   return;
-        // }
-        //
-        // console.log('Converted pixel points (first 5):', pixelPoints.slice(0, 5));
-        // console.log('Image dimensions:', { rows, cols });
-        //
-        // console.log('Point validation:');
-        // pixelPoints.forEach(([i, j], idx) => {
-        //   if (i < 0 || i >= cols || j < 0 || j >= rows) {
-        //     console.error(`Point ${idx} out of bounds:`, { i, j, cols, rows });
-        //   }
-        // });
-        //
-        // const pointsCanvas = [];
-        // for (const points of annotationObj.data.contour.polyline) {
-        //   pointsCanvas.push(viewport.worldToCanvas(points));
-        // }
-        // console.log(pointsCanvas);
-        // annotationObj['pointsCanvas'] = pointsCanvas;
-        // const segmentationId = segmentationObj.segmentationId;
-
-        // const imageIds = segmentationObj.representationData.Labelmap.imageIds;
-
-        // const img = cache.getImage(imageIds[0]);
-        // console.log(currImgId);
+        // Convert all annotation world coordinates to image pixel coordinates
+        const roiPolygons = annotationObjs.map(annotationObj => {
+          const worldPolyline = annotationObj.data.contour.polyline;
+          return worldPolyline.map(worldPoint => {
+            const [col, row] = utilities.worldToImageCoords(currImgId, worldPoint);
+            return { x: Math.floor(col), y: Math.floor(row) };
+          });
+        });
 
         const currentInstance = DicomMetadataStore.getInstanceByImageId(currImgId);
-        const currentSliceLocation = currentInstance.SliceLocation;
         const currentDisplaySet = displaySetService.getDisplaySetForSOPInstanceUID(
           currentInstance.SOPInstanceUID
         );
@@ -365,59 +312,78 @@ export default {
 
         // Get all display sets in the active study
         const displaySets = displaySetService.getActiveDisplaySets();
-        console.log(displaySets);
+        const [dataSource] = extensionManager.getActiveDataSource();
 
+        // Use current image index to pick the matching frame from each display set
         const imageIds = [];
         const images = [];
         const imagePromises = [];
         const imagesInfo = displaySets
           .map(displaySet => {
-            // const displaySetImageIds = displaySet.images?.map(img => img.imageId)
-            //   || displaySet.imageIds;
+            // Ensure imageIds are populated (they are lazy-loaded only for viewport display sets)
+            if (!displaySet.imageIds?.length && displaySet.images?.length) {
+              displaySet.imageIds = dataSource.getImageIdsForDisplaySet(displaySet);
+            }
             const displaySetImageIds = displaySet.imageIds;
-            if (!displaySet?.images?.length) {
-              console.warn('Display set has no images');
+            if (!displaySetImageIds?.length) {
+              console.warn('Display set has no image IDs');
               return;
             }
-            let foundImgId = null;
-            for (const instanceImg of displaySet.images) {
-              // Skip derived or problematic images if needed
-              const loadImagePromise = imageLoader
-                .loadImage(instanceImg.imageId)
-                .then(img => {
-                  const instance = DicomMetadataStore.getInstanceByImageId(
-                    img.referencedImageId ?? img.imageId
-                  );
-                  if (instance.SliceLocation == currentSliceLocation) {
-                    foundImgId = img.imageId;
-                    imageIds.push(img.imageId);
-                    images.push(img);
-                    return { matched: true, img, instance };
-                  }
-                  return { matched: false };
-                })
-                .catch(e => {
-                  console.error('Failed to load image:', e);
-                  return { matched: false };
-                });
-
-              imagePromises.push(loadImagePromise);
+            if (currentImageIdx >= displaySetImageIds.length) {
+              console.warn('Current image index out of range for display set');
+              return;
             }
+            const imgId = displaySetImageIds[currentImageIdx];
+            const loadImagePromise = imageLoader
+              .loadImage(imgId)
+              .then(img => {
+                imageIds.push(img.imageId);
+                images.push(img);
+                return { matched: true, img };
+              })
+              .catch(e => {
+                console.error('Failed to load image:', e);
+                return { matched: false };
+              });
+
+            imagePromises.push(loadImagePromise);
 
             return {
               displaySetUID: displaySet.displaySetInstanceUID,
               seriesUID: displaySet.SeriesInstanceUID,
-              imageId: foundImgId,
+              imageId: imgId,
             };
           })
           .filter(Boolean);
 
         const dceParamsService = servicesManager.services.dceParamsService;
         Promise.all(imagePromises).then(async () => {
+          if (!images.length) {
+            uiDialogService.show({
+              id: 'no-images-error',
+              title: 'Error',
+              shouldCloseOnEsc: true,
+              shouldCloseOnOverlayClick: true,
+              content: ({ hide }) => (
+                <div className="p-4 text-white">
+                  <p>Images set for DCE analysis is empty.</p>
+                  <button
+                    className="bg-primary-main mt-4 rounded px-4 py-2 text-white"
+                    onClick={hide}
+                  >
+                    OK
+                  </button>
+                </div>
+              ),
+            });
+            return;
+          }
           const { labelmap, rows, cols } = computeTtpWr({
             images,
             startFrame: dceParamsService.getStartFrame(),
             kernelSize: dceParamsService.getKernelSize(),
+            smoothingMethod: dceParamsService.getSmoothingMethod(),
+            roiPolygons,
           });
 
           // VALIDATE: Critical safety check before proceeding
