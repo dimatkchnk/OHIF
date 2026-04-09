@@ -26,6 +26,7 @@ const { transformWorldToIndex } = utilities;
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import { triggerSegmentationDataModified } from '@cornerstonejs/tools/segmentation/events/triggerSegmentationDataModified';
 import { servicesManager } from '@ohif/app/src/App';
+import { getTypeColor } from './utils/plotTypeColor';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -50,6 +51,10 @@ export default {
       startFrame: 8,
       kernelSize: 4,
       smoothingMethod: 'slidingKernel',
+      roiDistributions: [],
+      roiMeanCurves: [] as { roi: number; intensities: number[] }[],
+      meanCurveTimes: [] as number[],
+      _listeners: [] as (() => void)[],
       setStartFrame(value) {
         this.startFrame = value;
       },
@@ -67,6 +72,29 @@ export default {
       },
       getSmoothingMethod() {
         return this.smoothingMethod;
+      },
+      setRoiDistributions(distributions) {
+        this.roiDistributions = distributions;
+        this._listeners.forEach(fn => fn());
+      },
+      getRoiDistributions() {
+        return this.roiDistributions;
+      },
+      setRoiMeanCurves(curves, times) {
+        this.roiMeanCurves = curves;
+        this.meanCurveTimes = times;
+      },
+      getRoiMeanCurves() {
+        return this.roiMeanCurves;
+      },
+      getMeanCurveTimes() {
+        return this.meanCurveTimes;
+      },
+      onDistributionsChanged(fn: () => void) {
+        this._listeners.push(fn);
+        return () => {
+          this._listeners = this._listeners.filter(l => l !== fn);
+        };
       },
     };
 
@@ -378,13 +406,17 @@ export default {
             });
             return;
           }
-          const { labelmap, rows, cols } = computeTtpWr({
-            images,
-            startFrame: dceParamsService.getStartFrame(),
-            kernelSize: dceParamsService.getKernelSize(),
-            smoothingMethod: dceParamsService.getSmoothingMethod(),
-            roiPolygons,
-          });
+          const { labelmap, rows, cols, roiDistributions, roiMeanCurves, timeSeconds } =
+            computeTtpWr({
+              images,
+              startFrame: dceParamsService.getStartFrame(),
+              kernelSize: dceParamsService.getKernelSize(),
+              smoothingMethod: dceParamsService.getSmoothingMethod(),
+              roiPolygons,
+            });
+
+          dceParamsService.setRoiMeanCurves(roiMeanCurves, timeSeconds);
+          dceParamsService.setRoiDistributions(roiDistributions);
 
           // VALIDATE: Critical safety check before proceeding
           if (labelmap.length !== rows * cols) {
@@ -446,7 +478,7 @@ export default {
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 1,
             label: 'A',
-            color: [76, 191, 0, 255], // green
+            color: getTypeColor('A', 'rgba'), // green
             visibility: true,
             isLocked: true,
             active: true,
@@ -455,7 +487,7 @@ export default {
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 2,
             label: 'B',
-            color: [250, 182, 25, 255], // orange
+            color: getTypeColor('B', 'rgba'), // orange
             visibility: true,
             isLocked: true,
             active: true,
@@ -464,7 +496,7 @@ export default {
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 3,
             label: 'C',
-            color: [194, 29, 0, 255], // red
+            color: getTypeColor('C', 'rgba'), // red
             visibility: true,
             isLocked: true,
             active: true,
@@ -472,8 +504,8 @@ export default {
 
           segmentationService.addSegment(segmentationId, {
             segmentIndex: 4,
-            label: 'undefined',
-            color: [203, 230, 5, 255], // light green
+            label: 'E',
+            color: getTypeColor('E', 'rgba'), // light green
             visibility: true,
             isLocked: true,
             active: false,

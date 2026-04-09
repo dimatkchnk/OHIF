@@ -107,6 +107,7 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
   // --- Prepare output ---
   const labelmap = new Uint8Array(rows * cols); // Final segmentation map
   const allCurves = []; // To compute average curve
+  const roiMeanCurves: { roi: number; intensities: number[] }[] = [];
 
   // Helper functions
   function mean(arr) {
@@ -172,6 +173,10 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
       }
 
       allCurves.push(meanIntensitiesOverTime);
+      roiMeanCurves.push({
+        roi: polygons.indexOf(polygon) + 1,
+        intensities: meanIntensitiesOverTime,
+      });
 
       const preVal = mean(meanIntensitiesOverTime.slice(1, startFrame));
       const cutIntensities = meanIntensitiesOverTime.slice(startFrame);
@@ -255,14 +260,38 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
   // --- Compute Mean Curve Across All Kernels ---
   let meanCurve = [];
 
-  // if (allCurves.length > 0) {
-  //   meanCurve = timeSeconds.map((t, i) =>
-  //     allCurves.reduce((sum, curve) => sum + curve[i], 0) / allCurves.length
-  //   ).map(intensity => ({ time: t, intensity }));
-  // } else {
-  //   // Fallback: empty plot
-  //   meanCurve = timeSeconds.map(t => ({ time, intensity: 0 }));
-  // }
+  // --- Compute pixel type distribution per ROI ---
+  const labelNames = { 1: 'A', 2: 'B', 3: 'C', 4: 'E' };
+  const roiDistributions: { roi: number; total: number; counts: Record<number, number>; percentages: Record<string, number> }[] = [];
 
-  return { meanCurve, labelmap, cols, rows };
+  const polygons = roiPolygons ?? [];
+  for (let roiIdx = 0; roiIdx < polygons.length; roiIdx++) {
+    const polygon = polygons[roiIdx];
+    const counts: Record<number, number> = {};
+    let total = 0;
+
+    for (let py = 0; py < rows; py++) {
+      for (let px = 0; px < cols; px++) {
+        if (isInsidePolygon(px, py, polygon)) {
+          const label = labelmap[py * cols + px];
+          if (label > 0) {
+            counts[label] = (counts[label] || 0) + 1;
+            total++;
+          }
+        }
+      }
+    }
+
+    const percentages: Record<string, number> = {};
+    if (total > 0) {
+      for (const [label, count] of Object.entries(counts)) {
+        const name = labelNames[label] || `Label ${label}`;
+        percentages[name] = Math.round((count / total) * 1000) / 10;
+      }
+    }
+
+    roiDistributions.push({ roi: roiIdx + 1, total, counts, percentages });
+  }
+
+  return { meanCurve, labelmap, cols, rows, roiDistributions, roiMeanCurves, timeSeconds };
 }
