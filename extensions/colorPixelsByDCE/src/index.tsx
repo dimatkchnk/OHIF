@@ -167,7 +167,7 @@ export default {
         component: ToolButtonWrapper,
         uiType: 'ohif.toolButton',
         props: {
-          icon: 'tool-capture',
+          icon: 'icon-tool-threshold',
           label: 'Calculate TTP and WR',
           commands: {
             commandName: 'computeTtpWr',
@@ -332,6 +332,11 @@ export default {
           });
         });
 
+        // Capture annotation labels (fallback to "ROI N" when missing)
+        const roiLabels = annotationObjs.map(
+          (a, i) => a.data?.label || a.data?.text || `ROI ${i + 1}`
+        );
+
         const currentInstance = DicomMetadataStore.getInstanceByImageId(currImgId);
         const currentDisplaySet = displaySetService.getDisplaySetForSOPInstanceUID(
           currentInstance.SOPInstanceUID
@@ -406,17 +411,39 @@ export default {
             });
             return;
           }
-          const { labelmap, rows, cols, roiDistributions, roiMeanCurves, timeSeconds } =
-            computeTtpWr({
-              images,
-              startFrame: dceParamsService.getStartFrame(),
-              kernelSize: dceParamsService.getKernelSize(),
-              smoothingMethod: dceParamsService.getSmoothingMethod(),
-              roiPolygons,
-            });
+          const colormapStart = performance.now();
+          const {
+            labelmap,
+            rows,
+            cols,
+            roiPixelCount,
+            roiDistributions,
+            roiMeanCurves,
+            timeSeconds,
+          } = computeTtpWr({
+            images,
+            startFrame: dceParamsService.getStartFrame(),
+            kernelSize: dceParamsService.getKernelSize(),
+            smoothingMethod: dceParamsService.getSmoothingMethod(),
+            roiPolygons,
+          });
+          const colormapElapsedMs = performance.now() - colormapStart;
+          console.log(
+            `Colormap computation: ${roiPixelCount} ROI pixels in ${colormapElapsedMs.toFixed(2)} ms`
+          );
 
-          dceParamsService.setRoiMeanCurves(roiMeanCurves, timeSeconds);
-          dceParamsService.setRoiDistributions(roiDistributions);
+          // Attach annotation labels to curves and distributions
+          const labeledCurves = roiMeanCurves.map((c, i) => ({
+            ...c,
+            label: roiLabels[i] ?? `ROI ${c.roi}`,
+          }));
+          const labeledDistributions = roiDistributions.map((d, i) => ({
+            ...d,
+            label: roiLabels[i] ?? `ROI ${d.roi}`,
+          }));
+
+          dceParamsService.setRoiMeanCurves(labeledCurves, timeSeconds);
+          dceParamsService.setRoiDistributions(labeledDistributions);
 
           // VALIDATE: Critical safety check before proceeding
           if (labelmap.length !== rows * cols) {
@@ -510,6 +537,15 @@ export default {
             isLocked: true,
             active: false,
           });
+
+          // segmentationService.addSegment(segmentationId, {
+          //   segmentIndex: 5,
+          //   label: 'D',
+          //   color: [100, 29, 0, 0],
+          //   visibility: true,
+          //   isLocked: true,
+          //   active: false,
+          // });
         });
       },
     };

@@ -51,13 +51,13 @@ export default function DCEPlotPanel() {
     });
   }, [dceParamsService]);
 
-  // Build combined chart data: [{ time, "ROI 1": v, "ROI 2": v, ... }, ...]
+  // Build combined chart data using annotation labels as series keys
   const meanChartData =
     smoothingMethod === 'mean' && roiMeanCurves.length > 0 && meanCurveTimes.length > 0
       ? meanCurveTimes.map((t, i) => {
           const row: Record<string, number> = { time: Math.round(t) };
           for (const c of roiMeanCurves) {
-            row[`ROI ${c.roi}`] = c.intensities[i];
+            row[c.label ?? `ROI ${c.roi}`] = c.intensities[i];
           }
           return row;
         })
@@ -176,16 +176,22 @@ export default function DCEPlotPanel() {
                     labelStyle={{ color: '#fff' }}
                   />
                   <Legend wrapperStyle={{ color: '#fff' }} />
-                  {roiMeanCurves.map((c, i) => (
-                    <Line
-                      key={c.roi}
-                      type="monotone"
-                      dataKey={`ROI ${c.roi}`}
-                      stroke={ROI_COLORS[i % ROI_COLORS.length]}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  ))}
+                  {roiMeanCurves.map((c, i) => {
+                    const name = c.label ?? `ROI ${c.roi}`;
+                    const stroke =
+                      (c.type && (getTypeColor(c.type) as string)) ||
+                      ROI_COLORS[i % ROI_COLORS.length];
+                    return (
+                      <Line
+                        key={`${c.roi}-${name}`}
+                        type="monotone"
+                        dataKey={name}
+                        stroke={stroke}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    );
+                  })}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -199,7 +205,9 @@ export default function DCEPlotPanel() {
           <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Pixel Distribution</div>
           {roiDistributions.map((roi) => (
             <div key={roi.roi} style={{ marginBottom: '10px' }}>
-              <div style={{ marginBottom: '4px' }}>ROI {roi.roi} ({roi.total} pixels)</div>
+              <div style={{ marginBottom: '4px' }}>
+                {roi.label ?? `ROI ${roi.roi}`} ({roi.total} pixels)
+              </div>
               {Object.entries(roi.percentages).map(([name, pct]) => (
                 <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 8px' }}>
                   <span style={{ color: getTypeColor(name) || 'white' }}>{name}</span>

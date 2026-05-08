@@ -107,7 +107,8 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
   // --- Prepare output ---
   const labelmap = new Uint8Array(rows * cols); // Final segmentation map
   const allCurves = []; // To compute average curve
-  const roiMeanCurves: { roi: number; intensities: number[] }[] = [];
+  const roiMeanCurves: { roi: number; intensities: number[]; type?: string }[] = [];
+  const labelNameMap: Record<number, string> = { 1: 'A', 2: 'B', 3: 'C', 4: 'E' };
 
   // Helper functions
   function mean(arr) {
@@ -121,16 +122,17 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
   function classify(TTP, WR) {
     if (TTP <= 0) return 0;
     else if (TTP > 120 && WR < 10)
-      return 1; // Blue - A
+      return 1; // green - A
     else if (TTP <= 120 && WR >= 30)
-      return 2; // Yellow - B
+      return 2; // orange - B
     else if (TTP <= 120 && WR < 30)
-      return 3; // Red - C
+      return 3; // red - C
     else return 4;
   }
 
   // Pre-compute ROI mask as union of all polygons
   let roiMask: Uint8Array | null = null;
+  let roiPixelCount = 0;
   if (roiPolygons && roiPolygons.length > 0) {
     roiMask = new Uint8Array(rows * cols);
     for (let py = 0; py < rows; py++) {
@@ -138,11 +140,14 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
         for (const polygon of roiPolygons) {
           if (isInsidePolygon(px, py, polygon)) {
             roiMask[py * cols + px] = 1;
+            roiPixelCount++;
             break;
           }
         }
       }
     }
+  } else {
+    roiPixelCount = rows * cols;
   }
 
   if (smoothingMethod === 'mean') {
@@ -173,10 +178,6 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
       }
 
       allCurves.push(meanIntensitiesOverTime);
-      roiMeanCurves.push({
-        roi: polygons.indexOf(polygon) + 1,
-        intensities: meanIntensitiesOverTime,
-      });
 
       const preVal = mean(meanIntensitiesOverTime.slice(1, startFrame));
       const cutIntensities = meanIntensitiesOverTime.slice(startFrame);
@@ -191,6 +192,12 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
       }
 
       const segmentLabel = classify(TTP, WR);
+
+      roiMeanCurves.push({
+        roi: polygons.indexOf(polygon) + 1,
+        intensities: meanIntensitiesOverTime,
+        type: labelNameMap[segmentLabel],
+      });
 
       for (const idx of polyIndices) {
         labelmap[idx] = segmentLabel;
@@ -261,7 +268,8 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
   let meanCurve = [];
 
   // --- Compute pixel type distribution per ROI ---
-  const labelNames = { 1: 'A', 2: 'B', 3: 'C', 4: 'E' };
+  // Label 0 = unclassified pixels inside the ROI (no class/color)
+  const labelNames: Record<number, string> = { 0: 'None', 1: 'A', 2: 'B', 3: 'C', 4: 'E' };
   const roiDistributions: { roi: number; total: number; counts: Record<number, number>; percentages: Record<string, number> }[] = [];
 
   const polygons = roiPolygons ?? [];
@@ -274,10 +282,8 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
       for (let px = 0; px < cols; px++) {
         if (isInsidePolygon(px, py, polygon)) {
           const label = labelmap[py * cols + px];
-          if (label > 0) {
-            counts[label] = (counts[label] || 0) + 1;
-            total++;
-          }
+          counts[label] = (counts[label] || 0) + 1;
+          total++;
         }
       }
     }
@@ -285,7 +291,7 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
     const percentages: Record<string, number> = {};
     if (total > 0) {
       for (const [label, count] of Object.entries(counts)) {
-        const name = labelNames[label] || `Label ${label}`;
+        const name = labelNames[label] ?? `Label ${label}`;
         percentages[name] = Math.round((count / total) * 1000) / 10;
       }
     }
@@ -293,5 +299,5 @@ export function computeTtpWr({ images, startFrame = 8, kernelSize = 1, smoothing
     roiDistributions.push({ roi: roiIdx + 1, total, counts, percentages });
   }
 
-  return { meanCurve, labelmap, cols, rows, roiDistributions, roiMeanCurves, timeSeconds };
+  return { meanCurve, labelmap, cols, rows, roiPixelCount, roiDistributions, roiMeanCurves, timeSeconds };
 }

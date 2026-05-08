@@ -11,5 +11,8 @@ const colorMap: Record<PlotType, { hex: string; rgba: [number, number, number, n
 
 export function getTypeColor(type: PlotType, format: ColorFormat = 'hex') {
   const color = colorMap[type];
+  if (!color) {
+    return format === 'hex' ? '#dcf0f0' : [220, 240, 240, 255];
+  }
   return color[format];
 }
